@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: deskguard
+      POSTGRES_PASSWORD: deskguard
+      POSTGRES_DB: deskguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deskguard"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://deskguard:deskguard@postgres:5432/deskguard
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: deskguard-dev-secret-change-in-production
+      CORS_ORIGIN: http://localhost:5173
+      AWAY_LIMIT_MINUTES: 20
+      LIVENESS_INTERVAL_HOURS: 2
+      LIVENESS_GRACE_MINUTES: 10
+      MAX_AWAY_PERIODS: 3
+      SWEEP_INTERVAL_SECONDS: 60
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  worker:
+    build: ./backend
+    command: node src/workers/sweepWorker.js
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://deskguard:deskguard@postgres:5432/deskguard
+      REDIS_URL: redis://redis:6379
+      AWAY_LIMIT_MINUTES: 20
+      LIVENESS_INTERVAL_HOURS: 2
+      LIVENESS_GRACE_MINUTES: 10
+      SWEEP_INTERVAL_SECONDS: 60
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:3001
+      VITE_WS_URL: http://localhost:3001
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
+  redis_data:
