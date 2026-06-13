@@ -2,6 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
 import { config } from './config.js';
 import redis from './redis/client.js';
 import pool from './db/pool.js';
@@ -11,6 +14,8 @@ import authRoutes from './routes/auth.js';
 import deskRoutes from './routes/desks.js';
 import sessionRoutes from './routes/sessions.js';
 import adminRoutes from './routes/admin.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const httpServer = createServer(app);
@@ -25,15 +30,19 @@ setupSocket(io);
 app.use(cors({ origin: config.corsOrigin }));
 app.use(express.json());
 
-app.get('/health', async (req, res) => {
+const healthHandler = async (req, res) => {
   try {
     await pool.query('SELECT 1');
     await redis.ping();
-    res.json({ status: 'ok', service: 'deskguard-api' });
+    res.json({ status: 'ok', service: 'deskguard-api', timestamp: new Date().toISOString() });
   } catch (err) {
     res.status(503).json({ status: 'error', message: err.message });
   }
-});
+};
+
+// Support both /health and /api/health (Render uses /api/health)
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 app.get('/api/config', (req, res) => {
   res.json(config.timers);
@@ -49,16 +58,36 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+async function runMigrations() {
+  try {
+    const result = await pool.query(`SELECT to_regclass('public.users') as exists`);
+    if (!result.rows[0].exists) {
+      console.log('Running database migrations...');
+      const migrationPath = path.join(__dirname, '../../migrations/001_initial_schema.sql');
+      const sql = readFileSync(migrationPath, 'utf8');
+      await pool.query(sql);
+      console.log('Migrations complete.');
+    } else {
+      console.log('Database schema already exists, skipping migration.');
+    }
+  } catch (err) {
+    console.error('Migration error:', err.message);
+    throw err;
+  }
+}
+
 async function start() {
   try {
     await pool.query('SELECT 1');
     await redis.ping();
     console.log('Connected to PostgreSQL and Redis');
 
+    await runMigrations();
+
     setInterval(() => runSweep(io), config.timers.sweepIntervalSeconds * 1000);
 
-    httpServer.listen(config.port, () => {
-      console.log(`DeskGuard API running on http://localhost:${config.port}`);
+    httpServer.listen(config.port, '0.0.0.0', () => {
+      console.log(`DeskGuard API running on port ${config.port}`);
     });
   } catch (err) {
     console.error('Failed to start server:', err);
