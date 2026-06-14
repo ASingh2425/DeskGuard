@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+
 const STATUS_COLORS = {
   free: '#22c55e',
   occupied: '#ef4444',
@@ -14,7 +16,30 @@ const STATUS_LABELS = {
   maintenance: 'Maintenance',
 };
 
+function formatAwayRemaining(awayStart) {
+  const ms = 20 * 60 * 1000 - (Date.now() - new Date(awayStart));
+  if (ms <= 0) return '0:00';
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatExpiry(expiresAt) {
+  const ms = new Date(expiresAt) - Date.now();
+  if (ms <= 0) return '0:00';
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}h${m}m` : `${m}m`;
+}
+
 export default function DeskMap({ desks, selectedDesk, onSelectDesk, floor }) {
+  // Tick every 10s so time pills refresh smoothly
+  const [, setTick] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setTick(Date.now()), 10000);
+    return () => clearInterval(id);
+  }, []);
+
   const floorDesks = desks.filter((d) => d.floor === floor);
 
   return (
@@ -33,6 +58,14 @@ export default function DeskMap({ desks, selectedDesk, onSelectDesk, floor }) {
         {floorDesks.map((desk) => {
           const isSelected = selectedDesk?.id === desk.id;
           const color = STATUS_COLORS[desk.status] || STATUS_COLORS.free;
+          const hasTags = Array.isArray(desk.tags)
+            ? desk.tags.length > 0
+            : typeof desk.tags === 'string' && desk.tags.trim() !== '';
+          // Support both xCoord/yCoord (API) and x/y (legacy)
+          const dx = desk.xCoord ?? desk.x ?? 0;
+          const dy = desk.yCoord ?? desk.y ?? 0;
+          const dw = desk.width ?? 60;
+          const dh = desk.height ?? 40;
 
           return (
             <g
@@ -45,19 +78,21 @@ export default function DeskMap({ desks, selectedDesk, onSelectDesk, floor }) {
               style={{ transition: 'opacity 0.2s' }}
             >
               <rect
-                x={desk.x}
-                y={desk.y}
-                width={desk.width}
-                height={desk.height}
+                x={dx}
+                y={dy}
+                width={dw}
+                height={dh}
                 rx="6"
                 fill={color}
                 fillOpacity={isSelected ? 1 : 0.85}
                 stroke={isSelected ? '#fff' : color}
                 strokeWidth={isSelected ? 3 : 1}
               />
+
+              {/* Desk code label */}
               <text
-                x={desk.x + desk.width / 2}
-                y={desk.y + desk.height / 2 - 4}
+                x={dx + dw / 2}
+                y={dy + dh / 2 - (desk.occupantName || desk.expiresAt || desk.awayStart ? 5 : 0)}
                 textAnchor="middle"
                 fill="#fff"
                 fontSize="11"
@@ -66,23 +101,57 @@ export default function DeskMap({ desks, selectedDesk, onSelectDesk, floor }) {
               >
                 {desk.deskCode}
               </text>
-              {desk.occupant && (
+
+              {/* Occupant initials from new API */}
+              {desk.occupantName && (
                 <text
-                  x={desk.x + desk.width / 2}
-                  y={desk.y + desk.height / 2 + 10}
+                  x={dx + dw / 2}
+                  y={dy + dh / 2 + 8}
                   textAnchor="middle"
                   fill="#fff"
                   fontSize="9"
+                  opacity="0.85"
+                  pointerEvents="none"
+                >
+                  {desk.occupantName}
+                </text>
+              )}
+
+              {/* Time remaining pill */}
+              {(desk.expiresAt || desk.awayStart) && (
+                <text
+                  x={dx + dw / 2}
+                  y={dy + dh - 5}
+                  textAnchor="middle"
+                  fontSize="8"
+                  fill="white"
                   opacity="0.9"
                   pointerEvents="none"
                 >
-                  {desk.occupant.initials}
+                  {desk.status === 'away' && desk.awayStart
+                    ? formatAwayRemaining(desk.awayStart)
+                    : desk.expiresAt
+                    ? formatExpiry(desk.expiresAt)
+                    : ''}
                 </text>
+              )}
+
+              {/* Tag indicator dot (top-right corner) */}
+              {hasTags && (
+                <circle
+                  cx={dx + dw - 5}
+                  cy={dy + 5}
+                  r="3"
+                  fill="#a78bfa"
+                  opacity="0.9"
+                  pointerEvents="none"
+                />
               )}
             </g>
           );
         })}
 
+        {/* Legend */}
         <g transform="translate(20, 280)">
           {Object.entries(STATUS_LABELS).map(([status, label], i) => (
             <g key={status} transform={`translate(${i * 95}, 0)`}>

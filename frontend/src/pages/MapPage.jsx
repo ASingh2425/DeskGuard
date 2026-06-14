@@ -1,16 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import DeskMap, { DeskTooltip } from '../components/DeskMap';
 import SessionPanel from '../components/SessionPanel';
 import NotificationBanner from '../components/NotificationBanner';
+import BookingModal from '../components/BookingModal';
+import OccupancyBar from '../components/OccupancyBar';
 import Layout from '../components/Layout';
 
 export default function MapPage() {
+  const { user } = useAuth();
   const [desks, setDesks] = useState([]);
   const [session, setSession] = useState(null);
   const [selectedDesk, setSelectedDesk] = useState(null);
+  const [bookingDesk, setBookingDesk] = useState(null);
   const [floor, setFloor] = useState(1);
   const [loading, setLoading] = useState(false);
   const [mapLoading, setMapLoading] = useState(true);
@@ -43,13 +48,29 @@ export default function MapPage() {
         case 'back': result = await api.markBack(session.id); break;
         case 'liveness': result = await api.respondLiveness(session.id); break;
         case 'checkout': await api.checkout(); result = null; break;
+        case 'extend':
+          await api.extend(session.id);
+          result = await api.getActiveSession().catch(() => null);
+          break;
       }
-      setSession(result);
+      if (action !== 'extend') setSession(result);
       await refresh();
     } catch (err) {
       alert(err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function handleSelectDesk(desk) {
+    if (desk.status === 'free' && !session) {
+      // Open booking modal
+      setSelectedDesk(null);
+      setBookingDesk(desk);
+    } else {
+      // Show tooltip
+      setBookingDesk(null);
+      setSelectedDesk(desk);
     }
   }
 
@@ -59,7 +80,7 @@ export default function MapPage() {
     <Layout>
       <NotificationBanner notifications={notifications} onDismiss={dismissNotification} />
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold">Live Library Map</h1>
           <div className="flex items-center gap-3 mt-1">
@@ -93,6 +114,9 @@ export default function MapPage() {
         </div>
       </div>
 
+      {/* Occupancy bar between header and map */}
+      {!mapLoading && <OccupancyBar desks={desks} />}
+
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           {mapLoading ? (
@@ -109,10 +133,11 @@ export default function MapPage() {
             <DeskMap
               desks={desks}
               selectedDesk={selectedDesk}
-              onSelectDesk={setSelectedDesk}
+              onSelectDesk={handleSelectDesk}
               floor={floor}
             />
           )}
+          {/* Only show DeskTooltip for non-free/occupied desks */}
           <DeskTooltip desk={selectedDesk} />
         </div>
 
@@ -123,6 +148,8 @@ export default function MapPage() {
             onBack={() => handleAction('back')}
             onLiveness={() => handleAction('liveness')}
             onCheckout={() => handleAction('checkout')}
+            onExtend={() => handleAction('extend')}
+            onExpired={refresh}
             loading={loading}
           />
 
@@ -131,13 +158,13 @@ export default function MapPage() {
             <p className="text-sm text-slate-400 mb-3">Available desks on Floor {floor}:</p>
             <div className="flex flex-wrap gap-2">
               {desks.filter((d) => d.status === 'free' && d.floor === floor).slice(0, 6).map((d) => (
-                <Link
+                <button
                   key={d.id}
-                  to={`/checkin/${d.deskCode}`}
+                  onClick={() => setBookingDesk(d)}
                   className="px-3 py-1.5 bg-emerald-600/20 text-emerald-400 border border-emerald-600/20 rounded-lg text-sm font-medium hover:bg-emerald-600/30 hover:border-emerald-600/40 transition-colors"
                 >
                   {d.deskCode}
-                </Link>
+                </button>
               ))}
               {desks.filter((d) => d.status === 'free' && d.floor === floor).length === 0 && (
                 <p className="text-slate-500 text-sm">No free desks on this floor</p>
@@ -146,6 +173,18 @@ export default function MapPage() {
           </div>
         </div>
       </div>
+
+      {/* Booking Modal */}
+      {bookingDesk && (
+        <BookingModal
+          desk={bookingDesk}
+          onClose={() => setBookingDesk(null)}
+          onBooked={() => {
+            setBookingDesk(null);
+            refresh();
+          }}
+        />
+      )}
     </Layout>
   );
 }

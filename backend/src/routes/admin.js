@@ -14,13 +14,65 @@ router.use(authenticate, requireRole('librarian', 'admin'));
 router.get('/desks', async (req, res, next) => {
   try {
     const { floor, zoneId, status, sort = 'desk_code' } = req.query;
-    let desks = await getAllDesks({
-      floor: floor ? parseInt(floor, 10) : undefined,
-      zoneId,
-      status,
-    });
 
-    const sortKey = sort.replace(/[^a-z_]/gi, '');
+    let sql = `
+      SELECT d.*, z.name as zone_name,
+        s.id as session_id, s.expires_at, s.away_start, s.status as session_status,
+        u.name as occupant_name
+      FROM desks d
+      LEFT JOIN zones z ON d.zone_id = z.id
+      LEFT JOIN sessions s ON s.desk_id = d.id AND s.status IN ('active','away','liveness_pending')
+      LEFT JOIN users u ON s.user_id = u.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let idx = 1;
+
+    if (floor) {
+      sql += ` AND d.floor = $${idx++}`;
+      params.push(parseInt(floor, 10));
+    }
+    if (zoneId) {
+      sql += ` AND d.zone_id = $${idx++}`;
+      params.push(zoneId);
+    }
+    if (status) {
+      sql += ` AND d.status = $${idx++}`;
+      params.push(status);
+    }
+    sql += ' ORDER BY d.floor, d.desk_code';
+
+    const result = await query(sql, params);
+
+    function anonymizeOccupant(name) {
+      if (!name) return null;
+      const parts = name.trim().split(/\s+/);
+      if (parts.length === 1) return parts[0];
+      return `${parts[0]} ${parts[parts.length - 1][0]?.toUpperCase() || ''}.`;
+    }
+
+    let desks = result.rows.map((d) => ({
+      id: d.id,
+      deskCode: d.desk_code,
+      zoneId: d.zone_id,
+      zoneName: d.zone_name,
+      floor: d.floor,
+      qrCode: d.qr_code,
+      status: d.status,
+      x: parseFloat(d.x_coord),
+      y: parseFloat(d.y_coord),
+      width: parseFloat(d.width),
+      height: parseFloat(d.height),
+      notes: d.notes || null,
+      tags: d.tags || [],
+      sessionId: d.session_id || null,
+      expiresAt: d.expires_at || null,
+      awayStart: d.away_start || null,
+      sessionStatus: d.session_status || null,
+      occupantName: anonymizeOccupant(d.occupant_name),
+    }));
+
+    const sortKey = sort.replace(/[^a-zA-Z_]/g, '');
     desks.sort((a, b) => {
       const av = a[sortKey] ?? a.deskCode;
       const bv = b[sortKey] ?? b.deskCode;
@@ -144,6 +196,37 @@ router.post('/desks', async (req, res, next) => {
     await logAudit({ deskId: result.rows[0].id, userId: req.user.id, action: 'desk_created' });
 
     res.status(201).json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/desks/:id/notes', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { notes } = req.body;
+    const result = await query(
+      `UPDATE desks SET notes = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [notes ?? null, id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Desk not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/desks/:id/tags', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { tags } = req.body;
+    if (!Array.isArray(tags)) return res.status(400).json({ error: 'tags must be an array' });
+    const result = await query(
+      `UPDATE desks SET tags = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [tags, id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Desk not found' });
+    res.json(result.rows[0]);
   } catch (err) {
     next(err);
   }

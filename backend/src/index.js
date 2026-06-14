@@ -70,6 +70,15 @@ async function runMigrations() {
     } else {
       console.log('Database schema already exists, skipping migration.');
     }
+
+    // Run migration 002 if waitlist table doesn't exist
+    const waitlistCheck = await pool.query(`SELECT to_regclass('public.waitlist') as exists`);
+    if (!waitlistCheck.rows[0].exists) {
+      console.log('Running migration 002...');
+      const migration2 = readFileSync(path.join(__dirname, '../../migrations/002_booking_duration.sql'), 'utf8');
+      await pool.query(migration2);
+      console.log('Migration 002 complete.');
+    }
   } catch (err) {
     console.error('Migration error:', err.message);
     throw err;

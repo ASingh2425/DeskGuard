@@ -52,3 +52,19 @@ export function notifySessionEnded(userId, reason) {
 export function getTimerConfig() {
   return config.timers;
 }
+
+export function notifySessionExpiring(userId, minutesLeft) {
+  notifyUser(userId, buildNotification(
+    'session_expiring',
+    `Your desk booking expires in ${minutesLeft} minute(s). Extend now?`,
+    { minutesLeft }
+  ));
+}
+
+export function notifyWaitlistAvailable(userId, deskCode) {
+  notifyUser(userId, buildNotification(
+    'waitlist_available',
+    `Desk ${deskCode} is now free! You're next in the waitlist.`,
+    { deskCode }
+  ));
+}

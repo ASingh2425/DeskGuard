@@ -86,3 +86,38 @@
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* Slide-in from right for BookingModal */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.slide-in-right {
+  animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Urgent pulse for low time warnings */
+@keyframes urgentPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+.urgent-pulse {
+  animation: urgentPulse 0.75s ease-in-out infinite;
+}
+
+/* Progress bar fill animation */
+@keyframes fillBar {
+  from { width: 0; }
+}
+.progress-fill {
+  animation: fillBar 0.8s ease-out;
+}
+
+/* Smooth number transition for countdown timers */
+@keyframes numFlip {
+  from { transform: translateY(-8px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.num-flip {
+  animation: numFlip 0.15s ease-out;
+}

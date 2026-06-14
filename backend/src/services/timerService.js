@@ -2,7 +2,8 @@ import { query } from '../db/pool.js';
 import { endSession, triggerLivenessPrompt } from './sessionService.js';
 import { config } from '../config.js';
 import redis, { acquireLock, releaseLock, RedisKeys } from '../redis/client.js';
-import { notifyAwayReminder } from './notificationService.js';
+import { notifyAwayReminder, notifySessionExpiring } from './notificationService.js';
+import { notifyNextInWaitlist } from './waitlistService.js';
 
 const { awayLimitMinutes, livenessGraceMinutes } = config.timers;
 
@@ -30,10 +31,36 @@ export async function runSweep(io) {
       if (remaining <= 0) {
         await endSession(session.id, 'abandoned_via_away_timeout');
         stats.awayExpired++;
+        await notifyNextInWaitlist(session.desk_id, io);
         if (io) io.emit('desk:update', { type: 'abandoned', sessionId: session.id });
       } else if (remaining <= 5 * 60 * 1000 && remaining > 4 * 60 * 1000) {
         notifyAwayReminder(session.user_id, 5);
       }
+    }
+
+    // Check booking expiry
+    const expiredBookings = await query(
+      `SELECT s.*, d.desk_code, d.id as desk_id FROM sessions s
+       JOIN desks d ON s.desk_id = d.id
+       WHERE s.status IN ('active', 'liveness_pending') AND s.expires_at IS NOT NULL AND s.expires_at <= NOW()`
+    );
+    for (const session of expiredBookings.rows) {
+      await endSession(session.id, 'booking_expired');
+      stats.bookingExpired = (stats.bookingExpired || 0) + 1;
+      await notifyNextInWaitlist(session.desk_id, io);
+      if (io) io.emit('desks:refresh');
+    }
+
+    // Warn student 10 min before expiry
+    const expiringBookings = await query(
+      `SELECT s.*, d.desk_code FROM sessions s
+       JOIN desks d ON s.desk_id = d.id
+       WHERE s.status = 'active'
+         AND s.expires_at IS NOT NULL
+         AND s.expires_at BETWEEN NOW() + INTERVAL '9 minutes' AND NOW() + INTERVAL '11 minutes'`
+    );
+    for (const session of expiringBookings.rows) {
+      notifySessionExpiring(session.user_id, 10);
     }
 
     const activeSessions = await query(

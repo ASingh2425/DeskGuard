@@ -118,7 +118,8 @@ function formatDeskResponse(desk) {
 
 export async function getUserActiveSession(userId) {
   const result = await query(
-    `SELECT s.*, d.desk_code, d.status as desk_status, d.id as desk_id, z.name as zone_name
+    `SELECT s.*, s.duration_minutes, s.expires_at, s.extended_count, s.away_start,
+            d.desk_code, d.status as desk_status, d.id as desk_id, z.name as zone_name
      FROM sessions s
      JOIN desks d ON s.desk_id = d.id
      JOIN zones z ON d.zone_id = z.id
@@ -152,13 +153,16 @@ export async function getUserActiveSession(userId) {
     livenessDueAt,
     livenessRemainingSeconds: livenessDueAt ? Math.max(0, Math.floor((new Date(livenessDueAt).getTime() - now) / 1000)) : null,
     livenessPromptedAt: session.liveness_prompted_at,
+    durationMinutes: session.duration_minutes,
+    expiresAt: session.expires_at,
+    extendedCount: session.extended_count,
     maxAwayPeriods,
     awayLimitMinutes,
     livenessGraceMinutes,
   };
 }
 
-export async function checkIn(userId, deskCode) {
+export async function checkIn(userId, deskCode, durationMinutes = 120) {
   const lockKey = RedisKeys.deskLock(deskCode);
   const lock = await acquireLock(lockKey, 10);
   if (!lock) throw new Error('Desk operation in progress, try again');
@@ -179,11 +183,12 @@ export async function checkIn(userId, deskCode) {
 
     const { livenessIntervalHours } = config.timers;
     const livenessDue = new Date(Date.now() + livenessIntervalHours * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000);
 
     const sessionResult = await query(
-      `INSERT INTO sessions (desk_id, user_id, liveness_due, status)
-       VALUES ($1, $2, $3, 'active') RETURNING *`,
-      [desk.id, userId, livenessDue]
+      `INSERT INTO sessions (desk_id, user_id, liveness_due, status, duration_minutes, expires_at)
+       VALUES ($1, $2, $3, 'active', $4, $5) RETURNING *`,
+      [desk.id, userId, livenessDue, durationMinutes, expiresAt]
     );
     const session = sessionResult.rows[0];
 
@@ -398,4 +403,18 @@ export async function getDeskByCode(deskCode) {
     [deskCode]
   );
   return result.rows[0];
+}
+
+export async function extendSession(userId, sessionId) {
+  const result = await query(
+    `UPDATE sessions SET
+       expires_at = expires_at + INTERVAL '30 minutes',
+       extended_count = extended_count + 1,
+       updated_at = NOW()
+     WHERE id = $1 AND user_id = $2 AND status IN ('active', 'away', 'liveness_pending')
+     RETURNING *`,
+    [sessionId, userId]
+  );
+  if (!result.rows[0]) throw new Error('Session not found or not yours');
+  return getUserActiveSession(userId);
 }

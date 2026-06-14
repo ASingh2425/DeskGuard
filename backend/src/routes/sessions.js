@@ -8,6 +8,7 @@ import {
   checkout,
   getUserActiveSession,
   getUserHistory,
+  extendSession,
 } from '../services/sessionService.js';
 import { authenticate, attachUser } from '../middleware/auth.js';
 
@@ -41,10 +42,10 @@ router.get('/history', async (req, res, next) => {
 
 router.post('/checkin', checkInLimiter, async (req, res, next) => {
   try {
-    const { deskCode } = req.body;
+    const { deskCode, durationMinutes } = req.body;
     if (!deskCode) return res.status(400).json({ error: 'deskCode required' });
 
-    const result = await checkIn(req.user.id, deskCode);
+    const result = await checkIn(req.user.id, deskCode, durationMinutes || 120);
     const io = req.app.get('io');
     if (io) io.emit('desks:refresh');
 
@@ -116,6 +117,17 @@ router.post('/checkout', async (req, res, next) => {
     if (io) io.emit('desks:refresh');
 
     res.json({ message: 'Checked out successfully' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/:id/extend', async (req, res, next) => {
+  try {
+    const session = await extendSession(req.user.id, req.params.id);
+    const io = req.app.get('io');
+    if (io) io.emit('desks:refresh');
+    res.json(session);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

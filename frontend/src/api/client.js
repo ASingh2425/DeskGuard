@@ -34,12 +34,19 @@ export const api = {
 
   getDesk: (deskCode) => request(`/api/desks/${deskCode}`),
 
+  getWaitlist: (deskCode) => request(`/api/desks/${deskCode}/waitlist`),
+  joinWaitlist: (deskCode) => request(`/api/desks/${deskCode}/waitlist`, { method: 'POST' }),
+  leaveWaitlist: (deskCode) => request(`/api/desks/${deskCode}/waitlist`, { method: 'DELETE' }),
+
   getActiveSession: () => request('/api/sessions/active'),
 
   getHistory: () => request('/api/sessions/history'),
 
-  checkIn: (deskCode) =>
-    request('/api/sessions/checkin', { method: 'POST', body: JSON.stringify({ deskCode }) }),
+  checkIn: (deskCode, durationMinutes) =>
+    request('/api/sessions/checkin', { method: 'POST', body: JSON.stringify({ deskCode, durationMinutes }) }),
+
+  extend: (sessionId) =>
+    request(`/api/sessions/${sessionId}/extend`, { method: 'POST' }),
 
   markAway: (sessionId) =>
     request('/api/sessions/away', { method: 'POST', body: JSON.stringify({ sessionId }) }),
@@ -70,5 +77,7 @@ export const api = {
     updateConfig: (config) =>
       request('/api/admin/config', { method: 'PUT', body: JSON.stringify(config) }),
     exportSessions: () => `${API_URL}/api/admin/export/sessions`,
+    setNotes: (deskId, notes) => request(`/api/admin/desks/${deskId}/notes`, { method: 'PATCH', body: JSON.stringify({ notes }) }),
+    setTags: (deskId, tags) => request(`/api/admin/desks/${deskId}/tags`, { method: 'PATCH', body: JSON.stringify({ tags }) }),
   },
 };
