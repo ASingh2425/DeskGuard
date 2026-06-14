@@ -25,7 +25,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGIN
-        sync: false   # Set this to your Netlify URL after deploy
+        sync: false
       - key: AWAY_LIMIT_MINUTES
         value: 20
       - key: LIVENESS_INTERVAL_HOURS
@@ -56,13 +56,14 @@ services:
           type: redis
           property: connectionString
 
+  # Redis — must be in services, NOT in databases
+  - type: redis
+    name: deskguard-redis
+    plan: free
+    ipAllowList: []
+
 databases:
   - name: deskguard-db
     plan: free
     databaseName: deskguard
     user: deskguard
-
-  - name: deskguard-redis
-    type: redis
-    plan: free
-    ipAllowList: []
