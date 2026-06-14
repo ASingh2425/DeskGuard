@@ -7,14 +7,17 @@ export default function Layout({ children, admin = false }) {
   const navigate = useNavigate();
 
   const links = admin
-    ? [{ to: '/admin', label: 'Dashboard' }]
+    ? [
+        { to: '/monitor', label: '📡 Monitor' },
+        { to: '/admin',   label: '📊 Dashboard' },
+      ]
     : [
-        { to: '/map', label: 'Map' },
+        { to: '/map',     label: 'Map' },
         { to: '/history', label: 'History' },
       ];
 
   if (isAdmin && !admin) {
-    links.push({ to: '/admin', label: 'Admin' });
+    links.push({ to: '/monitor', label: 'Monitor' });
   }
 
   return (

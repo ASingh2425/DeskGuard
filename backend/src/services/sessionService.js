@@ -130,6 +130,7 @@ export async function getUserActiveSession(userId) {
   const session = result.rows[0];
   if (!session) return null;
 
+  const { awayLimitMinutes, maxAwayPeriods, livenessGraceMinutes } = config.timers;
   const now = Date.now();
   let awayExpiresAt = null;
   let livenessDueAt = session.liveness_due;

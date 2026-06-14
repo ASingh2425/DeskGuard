@@ -5,6 +5,7 @@ import MapPage from './pages/MapPage';
 import CheckInPage from './pages/CheckInPage';
 import HistoryPage from './pages/HistoryPage';
 import AdminDashboard from './pages/AdminDashboard';
+import MonitorPage from './pages/MonitorPage';
 
 function PrivateRoute({ children, adminOnly = false }) {
   const { user, loading, isAdmin } = useAuth();
@@ -28,12 +29,13 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to={isAdmin ? '/admin' : '/map'} /> : <LoginPage />} />
+      <Route path="/login" element={user ? <Navigate to={isAdmin ? '/monitor' : '/map'} /> : <LoginPage />} />
       <Route path="/checkin/:deskCode" element={<PrivateRoute><CheckInPage /></PrivateRoute>} />
       <Route path="/map" element={<PrivateRoute><MapPage /></PrivateRoute>} />
       <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
+      <Route path="/monitor" element={<PrivateRoute adminOnly><MonitorPage /></PrivateRoute>} />
       <Route path="/admin" element={<PrivateRoute adminOnly><AdminDashboard /></PrivateRoute>} />
-      <Route path="/" element={<Navigate to={user ? (isAdmin ? '/admin' : '/map') : '/login'} />} />
+      <Route path="/" element={<Navigate to={user ? (isAdmin ? '/monitor' : '/map') : '/login'} />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
