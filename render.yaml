@@ -1,5 +1,5 @@
 services:
-  # Backend API + Socket.IO
+  # Backend API + Socket.IO (sweep worker runs inside this process via setInterval)
   - type: web
     name: deskguard-api
     runtime: node
@@ -36,25 +36,6 @@ services:
         value: 3
       - key: SWEEP_INTERVAL_SECONDS
         value: 60
-
-  # Sweep worker (background process)
-  - type: worker
-    name: deskguard-worker
-    runtime: node
-    rootDir: backend
-    buildCommand: npm install
-    startCommand: node src/workers/sweepWorker.js
-    plan: free
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: deskguard-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          name: deskguard-redis
-          type: redis
-          property: connectionString
 
   # Redis — must be in services, NOT in databases
   - type: redis
